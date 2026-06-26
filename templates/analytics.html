@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %} — Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div>
+    <div class="page-greeting">Analytics</div>
+    <div class="page-subtitle">Deep insights into your tracked products</div>
+  </div>
+</div>
+
+<div class="grid-3 fade-up" style="margin-bottom:1.25rem;">
+  <div class="card" id="a-best-deal" style="border-top:3px solid var(--accent);">
+    <div class="card-title">Best Deal Right Now</div>
+    <div id="best-deal-content" style="color:var(--text3);font-size:13px;">Loading...</div>
+  </div>
+  <div class="card" id="a-worst-deal" style="border-top:3px solid var(--danger);">
+    <div class="card-title">Most Overpriced</div>
+    <div id="worst-deal-content" style="color:var(--text3);font-size:13px;">Loading...</div>
+  </div>
+  <div class="card" style="border-top:3px solid var(--warning);">
+    <div class="card-title">Platform Breakdown</div>
+    <div class="chart-wrap"><canvas id="platform-chart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid-2 fade-up">
+  <div class="card">
+    <div class="card-title">Deal Score Ranking</div>
+    <div id="score-list" style="color:var(--text3);font-size:13px;">Loading...</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Category Distribution</div>
+    <div class="chart-wrap"><canvas id="cat-chart"></canvas></div>
+  </div>
+</div>
+
+<div class="card fade-up" style="margin-top:1.25rem;">
+  <div class="card-title">Price Comparison — Current vs Target vs Base</div>
+  <div class="chart-wrap-lg"><canvas id="compare-chart"></canvas></div>
+</div>
+
+<div class="card fade-up" style="margin-top:1.25rem;">
+  <div class="card-title">Individual Price History</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;" id="product-tabs"></div>
+  <div class="chart-wrap-lg"><canvas id="history-chart"></canvas></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = ['#1a7a5e','#1a5fa8','#c97a1a','#c0392b','#6b3db5','#c4531a'];
+let historyChartInst = null;
+let allProducts = [];
+
+async function loadAnalytics() {
+  applyChartDefaults();
+  const res = await fetch('/api/analytics');
+  const d = await res.json();
+  allProducts = d.products;
+
+  // Best / Worst deal
+  const sorted = [...d.products].sort((a,b) => b.deal_score - a.deal_score);
+  if (sorted.length > 0) {
+    const best = sorted[0];
+    document.getElementById('best-deal-content').innerHTML = `
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;">${best.name}</div>
+      <div style="font-size:13px;color:var(--text2);">PKR ${Math.round(best.current_price).toLocaleString()}</div>
+      <div style="margin-top:8px;">${aiBadge(best.recommendation)}</div>
+      <div style="font-size:28px;font-weight:700;color:var(--accent);margin-top:8px;">${best.deal_score}<span style="font-size:14px;font-weight:400;color:var(--text2)"> / 100</span></div>
+    `;
+    const worst = sorted[sorted.length - 1];
+    document.getElementById('worst-deal-content').innerHTML = `
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;">${worst.name}</div>
+      <div style="font-size:13px;color:var(--text2);">PKR ${Math.round(worst.current_price).toLocaleString()}</div>
+      <div style="margin-top:8px;">${aiBadge(worst.recommendation)}</div>
+      <div style="font-size:28px;font-weight:700;color:var(--danger);margin-top:8px;">${worst.deal_score}<span style="font-size:14px;font-weight:400;color:var(--text2)"> / 100</span></div>
+    `;
+  }
+
+  // Platform doughnut
+  const platLabels = Object.keys(d.platforms);
+  const platData = Object.values(d.platforms);
+  new Chart(document.getElementById('platform-chart'), {
+    type: 'doughnut',
+    data: { labels: platLabels, datasets: [{ data: platData, backgroundColor: COLORS, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, boxWidth: 10 } } }
+    }
+  });
+
+  // Category pie
+  const catLabels = Object.keys(d.categories);
+  const catData = Object.values(d.categories);
+  new Chart(document.getElementById('cat-chart'), {
+    type: 'doughnut',
+    data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: COLORS.slice(1), borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, boxWidth: 10 } } }
+    }
+  });
+
+  // Deal score ranking
+  const scoreList = document.getElementById('score-list');
+  scoreList.innerHTML = sorted.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:500;flex:1;color:var(--text);">${p.name.split(' ').slice(0,3).join(' ')}</div>
+      <div style="font-size:12px;color:var(--text2);">${p.platform}</div>
+      <div style="width:80px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${p.deal_score}%;background:${scoreColor(p.deal_score)};border-radius:3px;"></div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:${scoreColor(p.deal_score)};min-width:28px;text-align:right;">${p.deal_score}</div>
+    </div>
+  `).join('');
+
+  // Compare bar chart
+  const names = d.products.map(p => p.name.split(' ').slice(0,2).join(' '));
+  new Chart(document.getElementById('compare-chart'), {
+    type: 'bar',
+    data: {
+      labels: names,
+      datasets: [
+        { label: 'Base Price', data: d.products.map(p => p.base_price), backgroundColor: '#1a5fa830', borderColor: '#1a5fa8', borderWidth: 1.5 },
+        { label: 'Current Price', data: d.products.map(p => p.current_price), backgroundColor: '#1a7a5e90', borderColor: '#1a7a5e', borderWidth: 1.5 },
+        { label: 'Target Price', data: d.products.map(p => p.target_price), backgroundColor: '#c97a1a30', borderColor: '#c97a1a', borderWidth: 1.5 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y: { ticks: { callback: v => 'PKR ' + (v/1000).toFixed(0) + 'k' } }
+      }
+    }
+  });
+
+  // Product tabs + history
+  buildProductTabs(d.products);
+}
+
+function buildProductTabs(products) {
+  const tabs = document.getElementById('product-tabs');
+  tabs.innerHTML = products.map((p, i) => `
+    <button onclick="showHistory(${i})" id="tab-${i}" class="btn ${i===0?'btn-primary':'btn-ghost'} btn-sm">${p.name.split(' ').slice(0,2).join(' ')}</button>
+  `).join('');
+  if (products.length > 0) showHistory(0);
+}
+
+function showHistory(idx) {
+  document.querySelectorAll('[id^=tab-]').forEach((b,i) => {
+    b.className = 'btn btn-sm ' + (i === idx ? 'btn-primary' : 'btn-ghost');
+  });
+  const p = allProducts[idx];
+  if (!p) return;
+  const labels = p.history.map(h => h.date.slice(5));
+  const prices = p.history.map(h => h.price);
+  const color = COLORS[idx % COLORS.length];
+
+  if (historyChartInst) historyChartInst.destroy();
+  historyChartInst = new Chart(document.getElementById('history-chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: p.name,
+        data: prices,
+        borderColor: color,
+        backgroundColor: color + '18',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      }, {
+        label: 'Target Price',
+        data: Array(prices.length).fill(p.target_price),
+        borderColor: '#c97a1a',
+        borderDash: [6, 3],
+        borderWidth: 1.5,
+        fill: false,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, usePointStyle: true } },
+        tooltip: {
+          mode: 'index', intersect: false,
+          callbacks: { label: ctx => ' PKR ' + Math.round(ctx.raw).toLocaleString() }
+        }
+      },
+      scales: {
+        y: { ticks: { callback: v => 'PKR ' + (v/1000).toFixed(0) + 'k' } }
+      }
+    }
+  });
+}
+
+loadAnalytics();
+</script>
+{% endblock %}

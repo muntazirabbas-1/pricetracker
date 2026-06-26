@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %} — Add Product{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div>
+    <div class="page-greeting">Track a New Product</div>
+    <div class="page-subtitle">Paste a product URL — we'll scrape the price automatically</div>
+  </div>
+</div>
+
+<div style="max-width:640px;" class="fade-up">
+
+  {% if scrape_error %}
+  <div class="flash" style="background:var(--warning-bg);color:var(--warning-text);border-color:var(--warning);display:flex;align-items:flex-start;gap:8px;">
+    <i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0;"></i>
+    <span>{{ scrape_error }}</span>
+  </div>
+  {% endif %}
+
+  <!-- How scraping works banner -->
+  <div style="background:var(--accent-bg);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:1.25rem;display:flex;gap:12px;align-items:flex-start;">
+    <i class="fa-solid fa-robot" style="color:var(--accent);font-size:18px;margin-top:2px;flex-shrink:0;"></i>
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--accent-text);">Auto Price Scraping Active</div>
+      <div style="font-size:12px;color:var(--accent-text);opacity:0.85;margin-top:2px;line-height:1.6;">
+        Paste a <strong>Daraz</strong>, <strong>Amazon</strong>, or <strong>Flipkart</strong> product URL — the app will automatically extract the current price. If scraping fails, enter the price manually as a backup.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="POST" id="add-form">
+
+      <div class="form-group">
+        <label class="form-label">
+          Product URL
+          <span style="background:var(--accent-bg);color:var(--accent);font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;margin-left:6px;">AUTO-SCRAPE</span>
+        </label>
+        <div style="position:relative;">
+          <input type="url" name="url" id="url-input" class="form-input"
+                 placeholder="https://www.daraz.pk/products/... or amazon.com/..."
+                 style="padding-right:100px;"
+                 value="{{ request.form.get('url', '') }}">
+          <button type="button" onclick="testScrape()"
+                  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);padding:5px 12px;"
+                  class="btn btn-ghost btn-sm" id="test-btn">
+            <i class="fa-solid fa-magnifying-glass"></i> Test
+          </button>
+        </div>
+        <div class="form-hint">Supported: Daraz · Amazon · Flipkart · Other sites (generic fallback)</div>
+        <div id="scrape-result" style="margin-top:8px;display:none;"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Product Name</label>
+        <input type="text" name="name" id="name-input" class="form-input"
+               placeholder="Auto-filled from URL, or type manually"
+               value="{{ request.form.get('name', '') }}">
+        <div class="form-hint">Leave blank to auto-fill from the product page.</div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">
+            Current Price (PKR)
+            <span style="font-size:11px;color:var(--text3);font-weight:400;margin-left:4px;">— backup if URL fails</span>
+          </label>
+          <input type="number" name="price" id="price-input" class="form-input"
+                 placeholder="e.g. 189000" min="1"
+                 value="{{ request.form.get('price', '') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target Price (PKR) <span style="color:var(--danger)">*</span></label>
+          <input type="number" name="target_price" class="form-input"
+                 placeholder="e.g. 170000" required min="1"
+                 value="{{ request.form.get('target_price', '') }}">
+          <div class="form-hint">Alert sent when price drops to this.</div>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Platform</label>
+          <select name="platform" id="platform-input" class="form-input form-select">
+            <option>Daraz</option>
+            <option>Amazon</option>
+            <option>Flipkart</option>
+            <option>Apple</option>
+            <option>OLX</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select name="category" class="form-input form-select">
+            <option>Phones</option>
+            <option>Laptops</option>
+            <option>Audio</option>
+            <option>Tablets</option>
+            <option>Accessories</option>
+            <option>TVs</option>
+            <option>Cameras</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:1.5rem;">
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+          <i class="fa-solid fa-plus"></i> Start Tracking
+        </button>
+        <a href="/watchlist" class="btn btn-ghost">Cancel</a>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-detect platform from URL
+document.getElementById('url-input').addEventListener('input', function() {
+  const url = this.value.toLowerCase();
+  const sel = document.getElementById('platform-input');
+  if (url.includes('daraz'))    sel.value = 'Daraz';
+  else if (url.includes('amazon'))   sel.value = 'Amazon';
+  else if (url.includes('flipkart')) sel.value = 'Flipkart';
+  else if (url.includes('apple'))    sel.value = 'Apple';
+});
+
+// Test scrape button — calls API to preview scraped price
+async function testScrape() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { alert('Please enter a URL first.'); return; }
+
+  const btn = document.getElementById('test-btn');
+  const resultDiv = document.getElementById('scrape-result');
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scraping...';
+  btn.disabled = true;
+  resultDiv.style.display = 'none';
+
+  try {
+    const res  = await fetch('/api/scrape_preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+
+    if (data.price) {
+      resultDiv.innerHTML = `
+        <div style="background:var(--accent-bg);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:10px 14px;display:flex;align-items:center;gap:10px;">
+          <i class="fa-solid fa-circle-check" style="color:var(--accent);"></i>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--accent-text);">Price scraped successfully!</div>
+            <div style="font-size:12px;color:var(--accent-text);opacity:0.85;">
+              PKR ${Math.round(data.price).toLocaleString()}
+              ${data.name ? '· ' + data.name.slice(0, 60) + '...' : ''}
+            </div>
+          </div>
+        </div>`;
+      // Auto-fill price and name fields
+      document.getElementById('price-input').value = Math.round(data.price);
+      if (data.name && !document.getElementById('name-input').value)
+        document.getElementById('name-input').value = data.name.slice(0, 120);
+    } else {
+      resultDiv.innerHTML = `
+        <div style="background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-sm);padding:10px 14px;display:flex;align-items:center;gap:10px;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i>
+          <div style="font-size:12px;color:var(--warning-text);">${data.error || 'Could not scrape price. Enter it manually below.'}</div>
+        </div>`;
+    }
+    resultDiv.style.display = 'block';
+  } catch(e) {
+    resultDiv.innerHTML = `<div style="font-size:12px;color:var(--danger);">Network error: ${e.message}</div>`;
+    resultDiv.style.display = 'block';
+  }
+
+  btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Test';
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %} — Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div>
+    <div class="page-greeting">Smart Alerts</div>
+    <div class="page-subtitle">AI-powered price alerts for your tracked products</div>
+  </div>
+</div>
+
+<div class="grid-3 fade-up" style="margin-bottom:1.5rem;" id="alert-stats"></div>
+
+<div class="card fade-up">
+  <div class="card-title">All Price Alerts</div>
+  <div id="alerts-content" style="color:var(--text3);font-size:13px;padding:1rem 0;">Loading...</div>
+</div>
+
+<div class="card fade-up" style="margin-top:1.25rem;">
+  <div class="card-title">AI Price Predictions</div>
+  <div id="predictions-content" style="color:var(--text3);font-size:13px;padding:1rem 0;">Loading...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadAlerts() {
+  const res = await fetch('/api/products');
+  const products = await res.json();
+
+  const hitting = products.filter(p => p.current_price <= p.target_price);
+  const dropping = products.filter(p => p.price_change < -2);
+  const rising = products.filter(p => p.price_change > 2);
+
+  document.getElementById('alert-stats').innerHTML = `
+    <div class="stat-card" style="border-left:3px solid var(--accent);">
+      <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)"><i class="fa-solid fa-check-circle"></i></div>
+      <div><div class="stat-val">${hitting.length}</div><div class="stat-lbl">Target Price Hit</div></div>
+    </div>
+    <div class="stat-card" style="border-left:3px solid var(--info);">
+      <div class="stat-icon" style="background:var(--info-bg);color:var(--info)"><i class="fa-solid fa-arrow-trend-down"></i></div>
+      <div><div class="stat-val">${dropping.length}</div><div class="stat-lbl">Dropping Now</div></div>
+    </div>
+    <div class="stat-card" style="border-left:3px solid var(--danger);">
+      <div class="stat-icon" style="background:var(--danger-bg);color:var(--danger)"><i class="fa-solid fa-arrow-trend-up"></i></div>
+      <div><div class="stat-val">${rising.length}</div><div class="stat-lbl">Price Rising</div></div>
+    </div>
+  `;
+
+  const allAlerts = [];
+  products.forEach(p => {
+    const gap = p.target_price - p.current_price;
+    const gapPct = ((gap / p.base_price) * 100).toFixed(1);
+
+    if (p.current_price <= p.target_price) {
+      allAlerts.push({ type: 'success', icon: 'fa-check-circle', product: p.name, platform: p.platform, message: `Hit target! You saved PKR ${Math.round(p.base_price - p.current_price).toLocaleString()}`, price: p.current_price, badge: 'badge-success', label: 'Buy Now' });
+    } else if (p.price_change < -3) {
+      allAlerts.push({ type: 'info', icon: 'fa-arrow-trend-down', product: p.name, platform: p.platform, message: `Price dropped ${Math.abs(p.price_change).toFixed(1)}% — ${Math.abs(gap) > 0 ? 'PKR ' + Math.round(Math.abs(gap)).toLocaleString() + ' above target' : 'near target'}`, price: p.current_price, badge: 'badge-info', label: 'Watch' });
+    } else if (p.price_change > 2) {
+      allAlerts.push({ type: 'danger', icon: 'fa-arrow-trend-up', product: p.name, platform: p.platform, message: `Price rising ${p.price_change.toFixed(1)}% — consider waiting`, price: p.current_price, badge: 'badge-danger', label: 'Wait' });
+    } else {
+      allAlerts.push({ type: 'neutral', icon: 'fa-minus', product: p.name, platform: p.platform, message: `Stable — PKR ${Math.round(Math.abs(gap)).toLocaleString()} away from target (${gapPct}%)`, price: p.current_price, badge: 'badge-neutral', label: 'Monitor' });
+    }
+  });
+
+  if (allAlerts.length === 0) {
+    document.getElementById('alerts-content').innerHTML = '<div class="empty-state"><i class="fa-solid fa-bell"></i><p>No alerts. Add products to start tracking.</p></div>';
+  } else {
+    document.getElementById('alerts-content').innerHTML = `
+      <table class="product-table">
+        <thead><tr><th>Product</th><th>Current Price</th><th>Status</th><th>Details</th><th>Action</th></tr></thead>
+        <tbody>
+          ${allAlerts.map(a => `<tr>
+            <td><div class="product-name-cell">
+              <i class="fa-solid ${a.icon}" style="color:${a.type==='success'?'var(--accent)':a.type==='danger'?'var(--danger)':a.type==='info'?'var(--info)':'var(--text3)'};width:16px;"></i>
+              <div><div class="product-name-text">${a.product}</div><div class="product-platform">${a.platform}</div></div>
+            </div></td>
+            <td style="font-weight:500;">PKR ${Math.round(a.price).toLocaleString()}</td>
+            <td><span class="badge ${a.badge}">${a.label}</span></td>
+            <td style="font-size:12px;color:var(--text2);">${a.message}</td>
+            <td><a href="/watchlist" class="btn btn-ghost btn-sm">View</a></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // AI Predictions
+  document.getElementById('predictions-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;">
+      ${products.map(p => {
+        const rec = p.recommendation;
+        const confMap = { buy: 'High confidence', wait: 'Strong signal', buy_soon: 'Moderate signal', neutral: 'Insufficient data' };
+        const colorMap = { buy: 'var(--accent)', wait: 'var(--danger)', buy_soon: 'var(--warning)', neutral: 'var(--text2)' };
+        const descMap = {
+          buy: 'Price is near its 30-day low. Historical data suggests this is a good entry point.',
+          wait: 'Price is elevated compared to recent history. Wait for a better opportunity.',
+          buy_soon: 'Prices are declining. Consider buying within the next few days.',
+          neutral: 'Not enough price history to make a strong recommendation.',
+        };
+        return `<div style="padding:1rem;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">${p.name.split(' ').slice(0,3).join(' ')}</div>
+          <div style="margin-bottom:8px;">${aiBadge(rec)}</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.5;">${descMap[rec]}</div>
+          <div style="font-size:11px;color:${colorMap[rec]};margin-top:6px;font-weight:500;">${confMap[rec]}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+loadAlerts();
+</script>
+{% endblock %}

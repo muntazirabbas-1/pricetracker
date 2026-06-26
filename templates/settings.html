@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %} — Settings{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div>
+    <div class="page-greeting">Settings</div>
+    <div class="page-subtitle">Manage your account and preferences</div>
+  </div>
+</div>
+
+<div style="max-width:640px;" class="fade-up">
+
+  {% if msg %}
+  <div class="flash" style="
+    background: {{ 'var(--accent-bg)' if msg.type == 'success' else ('var(--danger-bg)' if msg.type == 'error' else 'var(--info-bg)') }};
+    color: {{ 'var(--accent-text)' if msg.type == 'success' else ('var(--danger-text)' if msg.type == 'error' else 'var(--info-text)') }};
+    border-color: {{ 'var(--accent)' if msg.type == 'success' else ('var(--danger)' if msg.type == 'error' else 'var(--info)') }};
+    display:flex; align-items:center; gap:8px; margin-bottom:1.25rem;">
+    <i class="fa-solid {{ 'fa-check-circle' if msg.type == 'success' else ('fa-circle-xmark' if msg.type == 'error' else 'fa-info-circle') }}"></i>
+    {{ msg.text }}
+  </div>
+  {% endif %}
+
+  <!-- Profile Card -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title"><i class="fa-solid fa-user" style="color:var(--accent);margin-right:6px;"></i> Profile</div>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="update_profile">
+      <div style="display:flex;align-items:center;gap:20px;margin-bottom:1.25rem;">
+        <div style="position:relative;width:72px;height:72px;flex-shrink:0;">
+          {% if user_doc.get('photo') %}
+            <img src="{{ user_doc.photo }}" id="avatar-preview"
+                 style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);">
+          {% else %}
+            <div id="avatar-preview" style="width:72px;height:72px;border-radius:50%;background:var(--accent-bg);
+                 display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;
+                 color:var(--accent);border:2px solid var(--accent);">
+              {{ user_doc.get('name','U')[0].upper() }}
+            </div>
+          {% endif %}
+          <label for="photo-input" style="position:absolute;bottom:0;right:0;width:22px;height:22px;
+                 background:var(--accent);border-radius:50%;display:flex;align-items:center;
+                 justify-content:center;cursor:pointer;border:2px solid var(--surface);">
+            <i class="fa-solid fa-camera" style="font-size:10px;color:#fff;"></i>
+          </label>
+          <input type="file" id="photo-input" name="photo" accept="image/*"
+                 style="display:none;" onchange="previewPhoto(this)">
+        </div>
+        <div style="flex:1;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Display Name</label>
+            <input type="text" name="name" class="form-input"
+                   value="{{ user_doc.get('name', '') }}" placeholder="Your name" required>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" class="form-input" value="{{ user_doc.get('username', '') }}" disabled
+               style="opacity:0.5;cursor:not-allowed;">
+        <div class="form-hint">Username cannot be changed.</div>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Profile</button>
+    </form>
+  </div>
+
+  <!-- Change Email Card -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title"><i class="fa-solid fa-envelope" style="color:var(--accent);margin-right:6px;"></i> Email Address</div>
+    <form method="POST">
+      <input type="hidden" name="action" value="update_email">
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input type="email" name="email" class="form-input"
+               value="{{ user_doc.get('email', '') }}"
+               placeholder="you@example.com" required>
+        <div class="form-hint">Price drop alerts will be sent to this address.</div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+          <div style="position:relative;width:42px;height:24px;flex-shrink:0;">
+            <input type="checkbox" name="email_notifications" id="notif-toggle"
+                   style="opacity:0;width:0;height:0;position:absolute;"
+                   {{ 'checked' if user_doc.get('email_notifications', True) else '' }}>
+            <span id="toggle-track" style="position:absolute;inset:0;background:var(--border2);border-radius:20px;cursor:pointer;transition:background 0.2s;display:block;">
+              <span id="toggle-thumb" style="position:absolute;top:4px;left:4px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform 0.2s;display:block;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+            </span>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:500;color:var(--text);">Enable Email Notifications</div>
+            <div style="font-size:12px;color:var(--text2);">Get alerted when a product hits your target price</div>
+          </div>
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Email</button>
+    </form>
+  </div>
+
+  <!-- Change Password Card -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title"><i class="fa-solid fa-lock" style="color:var(--accent);margin-right:6px;"></i> Change Password</div>
+    <form method="POST">
+      <input type="hidden" name="action" value="update_password">
+      <div class="form-group">
+        <label class="form-label">Current Password</label>
+        <input type="password" name="current_password" class="form-input" placeholder="Enter current password" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password</label>
+        <input type="password" name="new_password" class="form-input" placeholder="At least 6 characters" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password</label>
+        <input type="password" name="confirm_password" class="form-input" placeholder="Repeat new password" required>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-key"></i> Update Password</button>
+    </form>
+  </div>
+
+  <!-- Email Test Card -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title"><i class="fa-solid fa-flask" style="color:var(--warning);margin-right:6px;"></i> Test & Manual Check</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <form method="POST" style="display:inline;">
+        <input type="hidden" name="action" value="test_email">
+        <button type="submit" class="btn btn-ghost" {{ 'disabled style=opacity:.5;cursor:not-allowed;' if not smtp_configured }}>
+          <i class="fa-solid fa-paper-plane"></i> Send Test Email
+        </button>
+      </form>
+      <form method="POST" style="display:inline;">
+        <input type="hidden" name="action" value="run_check">
+        <button type="submit" class="btn btn-ghost"><i class="fa-solid fa-rotate"></i> Check All Prices Now</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const checkbox = document.getElementById('notif-toggle');
+const track = document.getElementById('toggle-track');
+const thumb = document.getElementById('toggle-thumb');
+function updateToggle() {
+  track.style.background = checkbox.checked ? 'var(--accent)' : 'var(--border2)';
+  thumb.style.transform  = checkbox.checked ? 'translateX(18px)' : 'translateX(0)';
+}
+checkbox.addEventListener('change', updateToggle);
+track.addEventListener('click', () => { checkbox.checked = !checkbox.checked; updateToggle(); });
+updateToggle();
+
+function previewPhoto(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const preview = document.getElementById('avatar-preview');
+      if (preview.tagName === 'IMG') {
+        preview.src = e.target.result;
+      } else {
+        const img = document.createElement('img');
+        img.src = e.target.result;
+        img.id = 'avatar-preview';
+        img.style = 'width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);';
+        preview.replaceWith(img);
+      }
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+</script>
+{% endblock %}

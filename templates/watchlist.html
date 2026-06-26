@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %} — Watchlist{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div class="page-header-row">
+    <div>
+      <div class="page-greeting">Watchlist</div>
+      <div class="page-subtitle">All your tracked products at a glance</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="search-input" class="form-input" placeholder="Search products..." style="width:190px;">
+      <select id="sort-select" class="form-input form-select" style="width:160px;">
+        <option value="default">Sort: Default</option>
+        <option value="score_desc">Deal Score ↓</option>
+        <option value="price_asc">Price ↑</option>
+        <option value="price_desc">Price ↓</option>
+        <option value="change_desc">Biggest Drop</option>
+      </select>
+      <a href="/add_product" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Add Product</a>
+    </div>
+  </div>
+</div>
+
+<!-- Summary bar -->
+<div class="stats-grid fade-up" id="wl-summary" style="margin-bottom:1.25rem;"></div>
+
+<!-- Grid — fixed height with internal scroll -->
+<div class="watchlist-scroll-wrap fade-up">
+  <div class="watchlist-grid" id="wl-grid">
+    <div class="card" style="grid-column:1/-1;text-align:center;color:var(--text3);padding:3rem;">
+      <i class="fa-solid fa-spinner fa-spin" style="font-size:24px;margin-bottom:1rem;display:block;"></i>
+      Loading products...
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = ['#1a7a5e','#1a5fa8','#c97a1a','#c0392b','#6b3db5','#c4531a'];
+let allProducts = [];
+let destroyFns = [];
+
+async function loadWatchlist() {
+  const res = await fetch('/api/products');
+  allProducts = await res.json();
+  renderSummary(allProducts);
+  renderGrid(allProducts);
+}
+
+function renderSummary(products) {
+  const totalSaved = products.reduce((s,p) => s + Math.max(0, p.base_price - p.current_price), 0);
+  const hitCount   = products.filter(p => p.current_price <= p.target_price).length;
+  const avgScore   = products.length ? Math.round(products.reduce((s,p) => s+p.deal_score,0)/products.length) : 0;
+  document.getElementById('wl-summary').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)"><i class="fa-solid fa-tags"></i></div>
+      <div><div class="stat-val">${products.length}</div><div class="stat-lbl">Products</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--info-bg);color:var(--info)"><i class="fa-solid fa-piggy-bank"></i></div>
+      <div><div class="stat-val">${formatPKR(totalSaved)}</div><div class="stat-lbl">Total Saved</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)"><i class="fa-solid fa-bullseye"></i></div>
+      <div><div class="stat-val">${hitCount}</div><div class="stat-lbl">Targets Hit</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)"><i class="fa-solid fa-fire"></i></div>
+      <div><div class="stat-val">${avgScore}</div><div class="stat-lbl">Avg Deal Score</div></div>
+    </div>`;
+}
+
+function renderGrid(products) {
+  // Destroy old sparkline charts to free memory
+  destroyFns.forEach(fn => fn());
+  destroyFns = [];
+
+  const grid = document.getElementById('wl-grid');
+
+  if (products.length === 0) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+      <i class="fa-solid fa-heart"></i>
+      <p>No products found.</p>
+      <a href="/add_product" class="btn btn-primary">Track your first product</a>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = products.map((p, i) => {
+    const color     = COLORS[i % COLORS.length];
+    const hitTarget = p.current_price <= p.target_price;
+    const savings   = p.base_price - p.current_price;
+    const gapPct    = (((p.target_price - p.current_price) / p.base_price) * 100).toFixed(1);
+
+    return `<div class="wl-card">
+      <div class="wl-header">
+        <div class="wl-name">${p.name}</div>
+        ${hitTarget
+          ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> Target Hit</span>'
+          : `<span class="badge badge-neutral" style="font-size:10px;">${gapPct > 0 ? gapPct+'% to go' : 'Above target'}</span>`}
+      </div>
+
+      <div style="height:52px;position:relative;margin:0.5rem 0;">
+        <canvas id="mini-${p.pid}"></canvas>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:0.25rem;">
+        <div>
+          <div class="wl-price">PKR ${Math.round(p.current_price).toLocaleString()}</div>
+          <div class="wl-target">Target: <span>PKR ${Math.round(p.target_price).toLocaleString()}</span></div>
+        </div>
+        <div style="text-align:right;">
+          ${changeBadge(p.price_change)}
+          <div style="margin-top:4px;">${aiBadge(p.recommendation)}</div>
+        </div>
+      </div>
+
+      <div style="margin-top:0.75rem;padding:0.6rem;background:var(--surface2);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:12px;color:var(--text2);">
+          <i class="fa-solid fa-piggy-bank" style="color:var(--accent);margin-right:4px;"></i>
+          ${savings > 0 ? 'Saved PKR ' + Math.round(savings).toLocaleString() : 'No savings yet'}
+        </div>
+        <div style="width:34px;height:34px;border-radius:50%;border:2.5px solid ${scoreColor(p.deal_score)};display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:10px;font-weight:700;color:${scoreColor(p.deal_score)};">${p.deal_score}</span>
+        </div>
+      </div>
+
+      <div class="wl-footer">
+        <span class="wl-platform"><i class="fa-solid fa-store"></i> ${p.platform} · ${p.category}</span>
+        <form class="delete-form" method="POST" action="/delete_product/${p.pid}" onsubmit="return confirm('Remove this product?')">
+          <button type="submit" class="btn btn-danger btn-sm"><i class="fa-solid fa-trash"></i></button>
+        </form>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Draw sparklines
+  setTimeout(() => {
+    applyChartDefaults();
+    products.forEach((p, i) => {
+      const canvas = document.getElementById('mini-' + p.pid);
+      if (!canvas) return;
+      const color  = COLORS[i % COLORS.length];
+      const prices = p.history.slice(-14).map(h => h.price);
+      const chart  = createSparkline('mini-' + p.pid, prices, color);
+      if (chart) destroyFns.push(() => chart.destroy());
+    });
+  }, 50);
+}
+
+function getSorted(products) {
+  const val = document.getElementById('sort-select').value;
+  const arr = [...products];
+  if (val === 'score_desc')   return arr.sort((a,b) => b.deal_score - a.deal_score);
+  if (val === 'price_asc')    return arr.sort((a,b) => a.current_price - b.current_price);
+  if (val === 'price_desc')   return arr.sort((a,b) => b.current_price - a.current_price);
+  if (val === 'change_desc')  return arr.sort((a,b) => a.price_change - b.price_change);
+  return arr;
+}
+
+function getFiltered() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  return allProducts.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    p.platform.toLowerCase().includes(q) ||
+    p.category.toLowerCase().includes(q)
+  );
+}
+
+function refresh() {
+  const filtered = getFiltered();
+  const sorted   = getSorted(filtered);
+  renderSummary(sorted);
+  renderGrid(sorted);
+}
+
+document.getElementById('search-input').addEventListener('input', refresh);
+document.getElementById('sort-select').addEventListener('change', refresh);
+
+loadWatchlist();
+</script>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %} — Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div class="page-header-row">
+    <div>
+      <div class="page-greeting">Good {{ 'morning' if now_hour < 12 else ('afternoon' if now_hour < 18 else 'evening') }}, {{ username }} 👋</div>
+      <div class="page-subtitle">Here's your price tracking summary</div>
+    </div>
+    <a href="/add_product" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Track Product</a>
+  </div>
+</div>
+
+<div class="stats-grid fade-up" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)"><i class="fa-solid fa-tags"></i></div>
+    <div><div class="stat-val" id="s-total">—</div><div class="stat-lbl">Products Tracked</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--info-bg);color:var(--info)"><i class="fa-solid fa-piggy-bank"></i></div>
+    <div><div class="stat-val" id="s-saved">—</div><div class="stat-lbl">Total Saved</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)"><i class="fa-solid fa-bell"></i></div>
+    <div><div class="stat-val" id="s-alerts">—</div><div class="stat-lbl">Active Alerts</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:var(--danger-bg);color:var(--danger)"><i class="fa-solid fa-fire"></i></div>
+    <div><div class="stat-val" id="s-score">—</div><div class="stat-lbl">Avg Deal Score</div></div>
+  </div>
+</div>
+
+<div class="card progress-card fade-up">
+  <div class="progress-header">
+    <span class="progress-label" id="prog-label">Loading target progress...</span>
+    <span class="progress-pct" id="prog-pct">—</span>
+  </div>
+  <div class="progress-track"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
+  <div class="progress-milestones">
+    <span class="milestone">1 product</span>
+    <span class="milestone">3 products</span>
+    <span class="milestone">5 products</span>
+    <span class="milestone">All targets</span>
+  </div>
+</div>
+
+<div class="grid-2 fade-up">
+  <div class="card">
+    <div class="card-title">Live Prices <a href="/watchlist">View all →</a></div>
+    <table class="product-table" id="live-table">
+      <thead><tr>
+        <th>Product</th><th>Price</th><th>Change</th><th>AI Signal</th>
+      </tr></thead>
+      <tbody id="live-tbody"><tr><td colspan="4" style="color:var(--text3);font-size:13px;">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Recent Alerts <a href="/alerts">View all →</a></div>
+    <div class="alert-list" id="alert-list">
+      <div style="color:var(--text3);font-size:13px;padding:1rem 0;">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<div class="card fade-up" style="margin-top:1.25rem;">
+  <div class="card-title">Price Trend — All Products</div>
+  <div class="chart-wrap-lg"><canvas id="trend-chart"></canvas></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const nowHour = new Date().getHours();
+const COLORS = ['#1a7a5e','#1a5fa8','#c97a1a','#c0392b','#6b3db5','#c4531a'];
+
+async function loadDashboard() {
+  applyChartDefaults();
+  const res = await fetch('/api/dashboard');
+  const d = await res.json();
+
+  document.getElementById('s-total').textContent = d.total_products;
+  document.getElementById('s-saved').textContent = formatPKR(d.total_saved);
+  document.getElementById('s-alerts').textContent = d.active_alerts;
+  document.getElementById('s-score').textContent = d.deal_score;
+
+  const pct = d.targets_total > 0 ? Math.round((d.targets_hit / d.targets_total) * 100) : 0;
+  document.getElementById('prog-pct').textContent = pct + '%';
+  document.getElementById('prog-label').textContent = `${d.targets_hit} of ${d.targets_total} products hit target price`;
+  document.getElementById('prog-fill').style.width = pct + '%';
+
+  // Live table
+  const tbody = document.getElementById('live-tbody');
+  tbody.innerHTML = '';
+  d.products.forEach((p, i) => {
+    const dot = COLORS[i % COLORS.length];
+    tbody.innerHTML += `<tr>
+      <td><div class="product-name-cell">
+        <div class="product-cat-dot" style="background:${dot}"></div>
+        <div><div class="product-name-text">${p.name}</div><div class="product-platform">${p.platform}</div></div>
+      </div></td>
+      <td style="font-weight:500;">PKR ${Math.round(p.current_price).toLocaleString()}</td>
+      <td>${changeBadge(p.price_change)}</td>
+      <td>${aiBadge(p.recommendation)}</td>
+    </tr>`;
+  });
+
+  // Alerts
+  const alertList = document.getElementById('alert-list');
+  if (d.recent_alerts.length === 0) {
+    alertList.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:1rem 0;">No alerts yet. Add more products!</div>';
+  } else {
+    alertList.innerHTML = d.recent_alerts.map(a => {
+      const dotColor = a.type === 'success' ? '#1a7a5e' : a.type === 'warning' ? '#c97a1a' : '#c0392b';
+      return `<div class="alert-item">
+        <div class="alert-dot" style="background:${dotColor}"></div>
+        <div class="alert-body">
+          <div class="alert-prod">${a.product}</div>
+          <div class="alert-msg">${a.message}</div>
+        </div>
+        <div class="alert-time">${a.time}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Trend chart
+  if (d.products.length > 0) {
+    const labels = d.products[0].history.map(h => h.date.slice(5));
+    const datasets = d.products.slice(0, 4).map((p, i) => ({
+      label: p.name.split(' ').slice(0,2).join(' '),
+      data: p.history.map(h => h.price),
+      borderColor: COLORS[i],
+      backgroundColor: COLORS[i] + '15',
+      borderWidth: 2,
+      tension: 0.4,
+      pointRadius: 0,
+      fill: false,
+    }));
+    new Chart(document.getElementById('trend-chart'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'top', labels: { boxWidth: 12, padding: 16, usePointStyle: true } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8 } },
+          y: { ticks: { callback: v => 'PKR ' + (v/1000).toFixed(0) + 'k' } }
+        }
+      }
+    });
+  }
+}
+
+loadDashboard();
+</script>
+{% endblock %}

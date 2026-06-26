@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PriceTrack Pro{% block title %}{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark"><i class="fa-solid fa-chart-line"></i></div>
+      <div class="logo-text">
+        <span class="logo-name">PriceTrack</span>
+        <span class="logo-tag">Pro</span>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar">{{ username[0].upper() }}</div>
+      <div class="user-info">
+        <span class="user-name">{{ username }}</span>
+        <span class="user-role">Tracker</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}active{% endif %}">
+        <i class="fa-solid fa-gauge-high"></i><span>Dashboard</span>
+      </a>
+      <a href="/watchlist" class="nav-link {% if request.path == '/watchlist' %}active{% endif %}">
+        <i class="fa-solid fa-heart"></i><span>Watchlist</span>
+      </a>
+      <a href="/analytics" class="nav-link {% if request.path == '/analytics' %}active{% endif %}">
+        <i class="fa-solid fa-chart-bar"></i><span>Analytics</span>
+      </a>
+      <a href="/alerts" class="nav-link {% if request.path == '/alerts' %}active{% endif %}">
+        <i class="fa-solid fa-bell"></i><span>Alerts</span>
+      </a>
+      <a href="/add_product" class="nav-link {% if request.path == '/add_product' %}active{% endif %}">
+        <i class="fa-solid fa-plus"></i><span>Add Product</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+        <i class="fa-solid fa-moon" id="theme-icon"></i><span>Dark Mode</span>
+      </button>
+      <a href="/settings" class="nav-link {% if request.path == '/settings' %}active{% endif %}">
+        <i class="fa-solid fa-gear"></i><span>Settings</span>
+      </a>
+      <a href="/logout" class="nav-link logout-link">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Sign Out</span>
+      </a>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="mobile-topbar">
+      <button onclick="toggleSidebar()" class="menu-btn"><i class="fa-solid fa-bars"></i></button>
+      <span class="mobile-logo">PriceTrack Pro</span>
+    </div>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="/static/js/main.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
