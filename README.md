@@ -26,6 +26,19 @@ A professional AI-powered price tracker built with Flask + MongoDB.
 - Set environment variable before running:
   Windows:  `set MONGO_URI=your_connection_string`
   Mac/Linux: `export MONGO_URI=your_connection_string`
+**Environment Variables
+
+ This project uses a `.env` file to store sensitive information such as database connection strings, API keys, and email credentials.
+ For security reasons, the `.env` file is **not included** in this repository.
+ Create a `.env` file in the project's root directory and add the required environment variables with your own credentials before running the application.
+**Example:**
+ ```env
+  MONGO_URI=your_mongodb_connection_string
+  SMTP_EMAIL=your_email@example.com
+  SMTP_PASSWORD=your_email_app_password
+  ```
+
+
 
 ### 2. Install Python dependencies
 ```
